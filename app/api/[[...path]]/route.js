@@ -57,14 +57,28 @@ async function handleRoute(request, { params }) {
       const body = await request.json()
       const prompt = (body.prompt || '').trim()
       const lang = body.lang || 'en'
+      const force = body.force === true
       if (!prompt) {
         return handleCORS(NextResponse.json({ error: 'prompt is required' }, { status: 400 }))
+      }
+
+      // ---- Cache lookup (permanent for free tier reliability) ----
+      if (!force) {
+        try {
+          const cached = await database.collection('diagrams').findOne(
+            { prompt: { $regex: `^${prompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }, lang },
+            { sort: { createdAt: -1 } }
+          )
+          if (cached?.diagram) {
+            return handleCORS(NextResponse.json({ id: cached.id, diagram: cached.diagram, cached: true }))
+          }
+        } catch (e) { console.warn('Cache lookup failed:', e.message) }
       }
 
       const raw = await callLLM({
         system: buildDiagramSystemPrompt(lang),
         messages: [{ role: 'user', content: `Concept: ${prompt}\n\nReturn ONLY the JSON object as specified.` }],
-        model: 'gemini-2.5-flash',
+        kind: 'diagram',
         json: true,
         temperature: 0.6,
       })
@@ -129,7 +143,7 @@ async function handleRoute(request, { params }) {
       const reply = await callLLM({
         system: buildTutorSystemPrompt(lang) + conceptContext,
         messages,
-        model: 'gemini-2.5-flash',
+        kind: 'chat',
         temperature: 0.5,
       })
 
@@ -157,7 +171,8 @@ async function handleRoute(request, { params }) {
     return handleCORS(NextResponse.json({ error: `Route ${route} not found` }, { status: 404 }))
   } catch (error) {
     console.error('API Error:', error)
-    return handleCORS(NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 }))
+    const status = error.status === 429 ? 429 : 500
+    return handleCORS(NextResponse.json({ error: error.message || 'Internal server error', rateLimited: status === 429 }, { status }))
   }
 }
 

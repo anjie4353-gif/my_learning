@@ -91,6 +91,7 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [diagram, setDiagram] = useState(null)
   const [error, setError] = useState('')
+  const [rateLimited, setRateLimited] = useState(false)
   const [selectedNode, setSelectedNode] = useState(null)
   const [stepIndex, setStepIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -124,7 +125,7 @@ export default function App() {
   async function generate(text) {
     const p = (text ?? prompt).trim()
     if (!p) return
-    setLoading(true); setError(''); setSelectedNode(null); setStepIndex(0); setPlaying(false); setChat([])
+    setLoading(true); setError(''); setRateLimited(false); setSelectedNode(null); setStepIndex(0); setPlaying(false); setChat([])
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
@@ -132,7 +133,10 @@ export default function App() {
         body: JSON.stringify({ prompt: p, lang }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to generate')
+      if (!res.ok) {
+        if (data.rateLimited) setRateLimited(true)
+        throw new Error(data.error || 'Failed to generate')
+      }
       setDiagram(data.diagram)
       setPrompt(p)
     } catch (e) {
@@ -242,7 +246,13 @@ export default function App() {
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Sparkles className="w-4 h-4 mr-2" />{t('visualize')}</>}
                 </Button>
               </div>
-              {error && <p className="mt-3 text-red-400 text-sm">{error}</p>}
+              {error && !rateLimited && <p className="mt-3 text-red-400 text-sm">{error}</p>}
+              {rateLimited && (
+                <div className="mt-4 mx-auto max-w-xl bg-amber-500/10 border border-amber-500/40 text-amber-200 text-sm rounded-xl px-4 py-3 text-left">
+                  <div className="font-semibold mb-1">⚡ Rate limit reached (Gemini free tier: 20 req/day/model)</div>
+                  <div className="text-amber-200/80">Try one of the cached example concepts below — they load instantly. Or upgrade the Gemini API key in <code className="px-1 bg-amber-900/40 rounded">.env</code> to remove this limit.</div>
+                </div>
+              )}
             </div>
 
             <div className="mt-8 flex flex-wrap justify-center gap-2 max-w-3xl mx-auto">
