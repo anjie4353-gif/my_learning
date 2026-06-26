@@ -16,7 +16,9 @@ import { BlockMath, InlineMath } from 'react-katex'
 import {
   Sparkles, Send, Play, Pause, SkipBack, SkipForward, X, Loader2,
   Brain, MessageCircle, Zap, Code2, BookOpen, Lightbulb, ChevronRight, Cpu, Globe,
+  History, RotateCw, Languages, Library, Trash2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -86,7 +88,7 @@ function buildFlow(diagram, highlightNodeIds = [], highlightEdgeIds = []) {
 }
 
 export default function App() {
-  const { t, lang, setLang, detectedSuggestion, dismissSuggestion } = useLang()
+  const { t, lang, setLang, detectedSuggestion, dismissSuggestion, languages } = useLang()
   const [prompt, setPrompt] = useState('')
   const [loading, setLoading] = useState(false)
   const [diagram, setDiagram] = useState(null)
@@ -99,6 +101,10 @@ export default function App() {
   const [chat, setChat] = useState([])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
+  const [cached, setCached] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [history, setHistory] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(false)
   const chatScrollRef = useRef(null)
 
   const currentStep = diagram?.steps?.[stepIndex] || null
@@ -122,29 +128,90 @@ export default function App() {
     return () => clearTimeout(tt)
   }, [playing, stepIndex, diagram])
 
-  async function generate(text) {
+  async function generate(text, opts = {}) {
     const p = (text ?? prompt).trim()
     if (!p) return
+    const force = !!opts.force
+    const overrideLang = opts.lang || lang
     setLoading(true); setError(''); setRateLimited(false); setSelectedNode(null); setStepIndex(0); setPlaying(false); setChat([])
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: p, lang }),
+        body: JSON.stringify({ prompt: p, lang: overrideLang, force }),
       })
       const data = await res.json()
       if (!res.ok) {
-        if (data.rateLimited) setRateLimited(true)
+        if (data.rateLimited) {
+          setRateLimited(true)
+          toast.error('Rate limited — try a cached example or wait a few minutes', { duration: 4000 })
+        }
         throw new Error(data.error || 'Failed to generate')
       }
       setDiagram(data.diagram)
+      setCached(!!data.cached)
       setPrompt(p)
+      if (data.cached) toast.success('⚡ Loaded from cache', { duration: 1800 })
+      else if (force) toast.success('✨ Fresh diagram generated', { duration: 2000 })
     } catch (e) {
       setError(e.message)
     } finally {
       setLoading(false)
     }
   }
+
+  async function loadHistory() {
+    setHistoryLoading(true)
+    try {
+      const res = await fetch('/api/diagrams')
+      const data = await res.json()
+      if (Array.isArray(data)) setHistory(data)
+    } catch (e) {
+      toast.error('Could not load history')
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  async function openFromHistory(item) {
+    setHistoryOpen(false)
+    setLoading(true); setError(''); setRateLimited(false); setSelectedNode(null); setStepIndex(0); setPlaying(false); setChat([])
+    try {
+      const res = await fetch(`/api/diagrams/${item.id}`)
+      const data = await res.json()
+      if (!res.ok || !data.diagram) throw new Error(data.error || 'Not found')
+      setDiagram(data.diagram)
+      setCached(true)
+      setPrompt(data.prompt || '')
+      toast.success(`Loaded: ${data.diagram.title}`, { duration: 1800 })
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (historyOpen) loadHistory()
+  }, [historyOpen])
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function onKey(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        document.querySelector('input[placeholder]')?.focus()
+      } else if (e.key === ' ' && diagram && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault()
+        setPlaying((p) => !p)
+      } else if (e.key === 'Escape') {
+        setSelectedNode(null)
+        setHistoryOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [diagram])
 
   async function sendChat(messageOverride) {
     const msg = (messageOverride ?? chatInput).trim()
@@ -160,7 +227,16 @@ export default function App() {
         body: JSON.stringify({ message: msg, history: chat, concept: diagram, lang }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'tutor failed')
+      if (!res.ok) {
+        if (data.rateLimited) {
+          // Remove the user message + show friendly inline notice (do NOT add as assistant message)
+          setChat(chat)
+          toast.error('Tutor is rate-limited. Try again in a few minutes.', { duration: 3500 })
+          setChatInput(msg)
+          return
+        }
+        throw new Error(data.error || 'tutor failed')
+      }
       setChat([...newHistory, { role: 'assistant', content: data.reply }])
     } catch (e) {
       setChat([...newHistory, { role: 'assistant', content: `Error: ${e.message}` }])
@@ -196,6 +272,10 @@ export default function App() {
               <Badge variant="outline" className="border-purple-500/40 text-purple-300 hidden sm:inline-flex">
                 <Sparkles className="w-3 h-3 mr-1" /> {t('powered_by')}
               </Badge>
+              <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)} className="border-slate-700 bg-slate-800/40 hover:bg-slate-800 gap-2">
+                <Library className="w-4 h-4" />
+                <span className="hidden sm:inline">Library</span>
+              </Button>
               <LanguageSelector />
             </div>
           </nav>
@@ -296,6 +376,15 @@ export default function App() {
             </div>
           </div>
         )}
+
+        <HistoryDrawer
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          items={history}
+          loading={historyLoading}
+          onOpen={openFromHistory}
+          languages={languages}
+        />
       </div>
     )
   }
@@ -326,15 +415,32 @@ export default function App() {
           </Button>
         </div>
         <LanguageSelector compact />
+        <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)} className="border-slate-700">
+          <Library className="w-4 h-4" />
+          <span className="hidden md:inline ml-2">History</span>
+        </Button>
         <Button variant="outline" size="sm" onClick={() => setTutorOpen((o) => !o)} className="border-slate-700">
           <MessageCircle className="w-4 h-4 mr-2" />{t('ai_tutor')}
         </Button>
       </header>
 
-      <div className="px-6 py-3 border-b border-slate-800 bg-slate-900/40 flex items-center gap-3">
+      <div className="px-6 py-3 border-b border-slate-800 bg-slate-900/40 flex items-center gap-3 flex-wrap">
         <Badge className="bg-purple-500/15 text-purple-300 border-purple-500/30">{diagram.category}</Badge>
         <h2 className="text-lg font-semibold">{diagram.title}</h2>
-        <p className="text-sm text-slate-400 hidden md:block truncate">{diagram.summary}</p>
+        {cached && (
+          <Badge variant="outline" className="border-emerald-500/40 text-emerald-300 bg-emerald-500/10 gap-1">
+            <Zap className="w-3 h-3" /> cached
+          </Badge>
+        )}
+        {diagram.language && diagram.language !== lang && (
+          <Button size="sm" variant="outline" onClick={() => generate(prompt, { lang, force: false })} className="border-purple-500/40 text-purple-300 h-7 px-2 gap-1">
+            <Languages className="w-3 h-3" /> {langByCode(lang).native}
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" onClick={() => generate(prompt, { force: true })} disabled={loading} className="h-7 px-2 gap-1 text-slate-400 hover:text-slate-100">
+          <RotateCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} /> Regenerate
+        </Button>
+        <p className="text-sm text-slate-400 hidden md:block truncate flex-1 min-w-0">{diagram.summary}</p>
       </div>
 
       <div className="flex-1 flex min-h-0">
@@ -467,7 +573,14 @@ export default function App() {
                 <div className="text-xs text-slate-400">{t('context')}: {diagram.title}</div>
               </div>
             </div>
-            <button onClick={() => setTutorOpen(false)} className="text-slate-400 hover:text-slate-100"><X className="w-4 h-4" /></button>
+            <div className="flex items-center gap-1">
+              {chat.length > 0 && (
+                <button onClick={() => setChat([])} title="Clear chat" className="text-slate-400 hover:text-slate-100 p-1">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+              <button onClick={() => setTutorOpen(false)} className="text-slate-400 hover:text-slate-100 p-1"><X className="w-4 h-4" /></button>
+            </div>
           </div>
           <ScrollArea className="flex-1" viewportRef={chatScrollRef}>
             <div className="p-4 space-y-4">
@@ -509,6 +622,76 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <HistoryDrawer
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        items={history}
+        loading={historyLoading}
+        onOpen={openFromHistory}
+        languages={languages}
+      />
+    </div>
+  )
+}
+
+function HistoryDrawer({ open, onClose, items, loading, onOpen, languages }) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full sm:w-[440px] bg-slate-900 border-r border-slate-800 shadow-2xl flex flex-col">
+        <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Library className="w-5 h-5 text-purple-400" />
+            <div>
+              <div className="font-semibold">Diagram Library</div>
+              <div className="text-xs text-slate-400">{items.length} cached concepts — load instantly</div>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-100">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <ScrollArea className="flex-1">
+          <div className="p-3 space-y-2">
+            {loading && (
+              <div className="text-center py-12 text-slate-400 text-sm">
+                <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" /> Loading library...
+              </div>
+            )}
+            {!loading && items.length === 0 && (
+              <div className="text-center py-12 text-slate-500 text-sm">
+                <Library className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                No diagrams yet. Generate your first concept!
+              </div>
+            )}
+            {items.map((it) => {
+              const langInfo = languages.find((l) => l.code === it.lang) || languages[0]
+              return (
+                <button
+                  key={it.id}
+                  onClick={() => onOpen(it)}
+                  className="w-full text-left p-3 rounded-lg bg-slate-800/60 hover:bg-slate-800 border border-slate-700 hover:border-purple-500/50 transition group"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <div className="font-medium text-sm text-slate-100 line-clamp-2 flex-1">{it.title || it.prompt}</div>
+                    <span className="text-[10px] uppercase tracking-wide text-slate-500 shrink-0">{langInfo.code}</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {it.category && (
+                      <Badge variant="outline" className="border-purple-500/30 text-purple-300 text-[10px] h-5 px-1.5">
+                        {it.category}
+                      </Badge>
+                    )}
+                    <span className="text-[11px] text-slate-500 truncate">{it.prompt}</span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </ScrollArea>
+      </div>
     </div>
   )
 }

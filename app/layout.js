@@ -1,5 +1,6 @@
 import './globals.css'
 import { Providers } from './providers'
+import { Toaster } from 'sonner'
 
 export const metadata = {
   title: 'Visual Engineering AI — Understand Any Concept Through Interactive Visuals',
@@ -14,6 +15,7 @@ export default function RootLayout({ children }) {
       </head>
       <body className="bg-background text-foreground antialiased">
         <Providers>{children}</Providers>
+        <Toaster theme="dark" position="bottom-center" toastOptions={{ style: { background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0' } }} />
       </body>
     </html>
   )
