@@ -601,6 +601,15 @@ export default function App() {
                 </div>
               )}
 
+              {diagram.simpleExplanation && (
+                <div className="bg-gradient-to-br from-purple-900/30 to-blue-900/30 border border-purple-500/30 rounded-lg p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-purple-300 mb-1.5 flex items-center gap-1">
+                    <Lightbulb className="w-3 h-3" /> Like I'm 15
+                  </div>
+                  <p className="text-sm text-slate-200 leading-relaxed">{diagram.simpleExplanation}</p>
+                </div>
+              )}
+
               {diagram.formulas?.length > 0 && (
                 <div className="pt-4 border-t border-slate-800">
                   <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3 flex items-center gap-1"><BookOpen className="w-3 h-3" />{t('formulas')}</h4>
@@ -640,6 +649,50 @@ export default function App() {
                   <div className="space-y-3">
                     {diagram.quiz.map((q, i) => (
                       <QuizCard key={q.id || i} q={q} idx={i + 1} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {diagram.build && (
+                <div className="pt-4 border-t border-slate-800">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3 flex items-center gap-1">
+                    <Code2 className="w-3 h-3" /> Build It Yourself
+                    {diagram.build.language && (
+                      <Badge variant="outline" className="ml-1 border-slate-700 text-[10px] h-5">{diagram.build.language}</Badge>
+                    )}
+                  </h4>
+                  <BuildPanel build={diagram.build} />
+                </div>
+              )}
+
+              {diagram.projects && (diagram.projects.mini || diagram.projects.intermediate || diagram.projects.advanced) && (
+                <div className="pt-4 border-t border-slate-800">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" /> Project Challenges
+                  </h4>
+                  <div className="space-y-2">
+                    {diagram.projects.mini && (
+                      <ProjectCard level="Mini" color="emerald" text={diagram.projects.mini} />
+                    )}
+                    {diagram.projects.intermediate && (
+                      <ProjectCard level="Intermediate" color="amber" text={diagram.projects.intermediate} />
+                    )}
+                    {diagram.projects.advanced && (
+                      <ProjectCard level="Advanced" color="rose" text={diagram.projects.advanced} />
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {diagram.interviewQuestions?.length > 0 && (
+                <div className="pt-4 border-t border-slate-800">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3 flex items-center gap-1">
+                    <MessageCircle className="w-3 h-3" /> Interview Questions
+                  </h4>
+                  <div className="space-y-2">
+                    {diagram.interviewQuestions.map((iq, i) => (
+                      <InterviewQA key={i} q={iq.question} a={iq.answer} idx={i + 1} />
                     ))}
                   </div>
                 </div>
@@ -887,6 +940,127 @@ function QuizCard({ q, idx }) {
         <div className={`mt-2 text-xs ${isCorrect ? 'text-emerald-300' : 'text-amber-300'}`}>
           {isCorrect ? '✓ Correct! ' : '✗ Not quite. '}{q.explanation}
         </div>
+      )}
+    </div>
+  )
+}
+
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      onClick={async () => {
+        try { await navigator.clipboard.writeText(text); setCopied(true); toast.success('Copied'); setTimeout(() => setCopied(false), 1500) } catch {}
+      }}
+      className="text-[10px] uppercase tracking-wide text-slate-400 hover:text-slate-100 px-2 py-0.5 rounded bg-slate-800 border border-slate-700"
+    >
+      {copied ? 'copied ✓' : 'copy'}
+    </button>
+  )
+}
+
+function Collapsible({ title, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="border border-slate-800 rounded-lg overflow-hidden">
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between px-3 py-2 bg-slate-900/60 hover:bg-slate-800/60 text-left">
+        <span className="text-xs font-semibold text-slate-200">{title}</span>
+        <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+      {open && <div className="p-3 bg-slate-950/40 text-xs space-y-2">{children}</div>}
+    </div>
+  )
+}
+
+function BuildPanel({ build }) {
+  return (
+    <div className="space-y-2">
+      {(build.setup?.length > 0) && (
+        <Collapsible title="🔧 Setup">
+          <ol className="list-decimal pl-4 space-y-1 text-slate-300">
+            {build.setup.map((s, i) => <li key={i}>{s}</li>)}
+          </ol>
+        </Collapsible>
+      )}
+      {build.folderStructure && (
+        <Collapsible title="📁 Folder Structure">
+          <div className="flex items-start justify-between gap-2">
+            <pre className="text-[11px] text-slate-300 whitespace-pre-wrap flex-1 leading-tight">{build.folderStructure}</pre>
+            <CopyButton text={build.folderStructure} />
+          </div>
+        </Collapsible>
+      )}
+      {build.code && (
+        <Collapsible title="💻 Full Code" defaultOpen={true}>
+          <div className="flex items-center justify-end mb-1">
+            <CopyButton text={build.code} />
+          </div>
+          <pre className="text-[11px] bg-slate-950 border border-slate-800 rounded p-2.5 overflow-x-auto whitespace-pre-wrap text-slate-200 leading-snug">{build.code}</pre>
+        </Collapsible>
+      )}
+      {(build.walkthrough?.length > 0) && (
+        <Collapsible title="🧭 Code Walkthrough">
+          <div className="space-y-2">
+            {build.walkthrough.map((w, i) => (
+              <div key={i} className="space-y-1">
+                <pre className="text-[11px] bg-slate-950 border border-slate-800 rounded px-2 py-1 text-slate-300 whitespace-pre-wrap">{w.snippet}</pre>
+                <p className="text-slate-400 leading-relaxed">{w.explanation}</p>
+              </div>
+            ))}
+          </div>
+        </Collapsible>
+      )}
+      {build.runCommand && (
+        <Collapsible title="▶️ Run">
+          <div className="flex items-center justify-between gap-2 bg-slate-950 border border-slate-800 rounded px-2 py-1">
+            <code className="text-emerald-300 text-[11px]">$ {build.runCommand}</code>
+            <CopyButton text={build.runCommand} />
+          </div>
+          {build.expectedOutput && <p className="mt-2 text-slate-400">Expected output: {build.expectedOutput}</p>}
+        </Collapsible>
+      )}
+      {(build.commonErrors?.length > 0) && (
+        <Collapsible title="⚠️ Common Errors">
+          <div className="space-y-2">
+            {build.commonErrors.map((e, i) => (
+              <div key={i} className="bg-amber-500/5 border border-amber-500/30 rounded p-2">
+                <div className="font-semibold text-amber-200 mb-0.5">{e.error}</div>
+                <div className="text-slate-400"><span className="text-slate-500">Cause:</span> {e.cause}</div>
+                <div className="text-slate-300"><span className="text-slate-500">Fix:</span> {e.fix}</div>
+              </div>
+            ))}
+          </div>
+        </Collapsible>
+      )}
+    </div>
+  )
+}
+
+const PROJECT_COLORS = {
+  emerald: { border: 'border-emerald-500/40', badge: 'bg-emerald-500/15 text-emerald-300' },
+  amber:   { border: 'border-amber-500/40',   badge: 'bg-amber-500/15 text-amber-300' },
+  rose:    { border: 'border-rose-500/40',    badge: 'bg-rose-500/15 text-rose-300' },
+}
+
+function ProjectCard({ level, color, text }) {
+  const c = PROJECT_COLORS[color] || PROJECT_COLORS.emerald
+  return (
+    <div className={`bg-slate-950/60 border ${c.border} rounded-lg p-2.5`}>
+      <span className={`inline-block text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${c.badge} mb-1.5 font-semibold`}>{level}</span>
+      <p className="text-xs text-slate-200 leading-relaxed">{text}</p>
+    </div>
+  )
+}
+
+function InterviewQA({ q, a, idx }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="bg-slate-950/60 border border-slate-800 rounded-lg p-2.5">
+      <div className="text-xs font-medium text-slate-100 mb-1">Q{idx}. {q}</div>
+      {show ? (
+        <p className="text-xs text-slate-300 leading-relaxed mt-1">{a}</p>
+      ) : (
+        <button onClick={() => setShow(true)} className="text-[11px] text-purple-300 hover:text-purple-200 underline">Show answer</button>
       )}
     </div>
   )

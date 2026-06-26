@@ -97,6 +97,10 @@ async function handleRoute(request, { params }) {
       diagram.formulas = Array.isArray(diagram.formulas) ? diagram.formulas : []
       diagram.insights = Array.isArray(diagram.insights) ? diagram.insights : []
       diagram.quiz = Array.isArray(diagram.quiz) ? diagram.quiz : []
+      diagram.interviewQuestions = Array.isArray(diagram.interviewQuestions) ? diagram.interviewQuestions : []
+      diagram.simpleExplanation = typeof diagram.simpleExplanation === 'string' ? diagram.simpleExplanation : ''
+      diagram.build = diagram.build && typeof diagram.build === 'object' ? diagram.build : null
+      diagram.projects = diagram.projects && typeof diagram.projects === 'object' ? diagram.projects : null
       diagram.language = lang
 
       const record = { id: uuidv4(), prompt, diagram, lang, createdAt: new Date() }
