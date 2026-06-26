@@ -16,9 +16,17 @@ import { BlockMath, InlineMath } from 'react-katex'
 import {
   Sparkles, Send, Play, Pause, SkipBack, SkipForward, X, Loader2,
   Brain, MessageCircle, Zap, Code2, BookOpen, Lightbulb, ChevronRight, Cpu, Globe,
-  History, RotateCw, Languages, Library, Trash2,
+  History, RotateCw, Languages, Library, Trash2, Download, Gauge,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { toPng } from 'html-to-image'
+import { GeometryCanvas } from '@/components/GeometryCanvas'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -105,7 +113,9 @@ export default function App() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [history, setHistory] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [speed, setSpeed] = useState(1) // 0.5x | 1x | 2x
   const chatScrollRef = useRef(null)
+  const canvasWrapRef = useRef(null)
 
   const currentStep = diagram?.steps?.[stepIndex] || null
   const flow = useMemo(
@@ -124,9 +134,24 @@ export default function App() {
         if (i + 1 >= diagram.steps.length) { setPlaying(false); return i }
         return i + 1
       })
-    }, 2200)
+    }, 2200 / speed)
     return () => clearTimeout(tt)
-  }, [playing, stepIndex, diagram])
+  }, [playing, stepIndex, diagram, speed])
+
+  async function exportPNG() {
+    const target = canvasWrapRef.current
+    if (!target) return
+    try {
+      const dataUrl = await toPng(target, { backgroundColor: '#020617', pixelRatio: 2, cacheBust: true })
+      const a = document.createElement('a')
+      a.download = `${(diagram?.title || 'diagram').replace(/\s+/g, '_').toLowerCase()}.png`
+      a.href = dataUrl
+      a.click()
+      toast.success('📥 PNG downloaded')
+    } catch (e) {
+      toast.error('Export failed: ' + e.message)
+    }
+  }
 
   async function generate(text, opts = {}) {
     const p = (text ?? prompt).trim()
@@ -444,39 +469,60 @@ export default function App() {
       </div>
 
       <div className="flex-1 flex min-h-0">
-        <div className="flex-1 relative">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onNodeClick={onNodeClick}
-            fitView
-            fitViewOptions={{ padding: 0.2 }}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background color="#1e293b" gap={20} />
-            <Controls className="!bg-slate-800 !border-slate-700" />
-            <MiniMap className="!bg-slate-900 !border-slate-700" nodeColor={(n) => n.style?.border || '#64748b'} maskColor="rgba(0,0,0,0.6)" />
-          </ReactFlow>
+        <div className="flex-1 relative" ref={canvasWrapRef}>
+          {diagram.renderer === 'geometry' && diagram.geometry ? (
+            <GeometryCanvas
+              geometry={diagram.geometry}
+              visibleIds={currentStep?.showGeometryIds}
+              onElementClick={(el) => setSelectedNode({ label: el.label, type: el.type, description: el.description || `${el.type}: ${el.label}`, code: '', example: '' })}
+            />
+          ) : (
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onNodeClick={onNodeClick}
+              fitView
+              fitViewOptions={{ padding: 0.2 }}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Background color="#1e293b" gap={20} />
+              <Controls className="!bg-slate-800 !border-slate-700" />
+              <MiniMap className="!bg-slate-900 !border-slate-700" nodeColor={(n) => n.style?.border || '#64748b'} maskColor="rgba(0,0,0,0.6)" />
+            </ReactFlow>
+          )}
 
           {diagram.steps?.length > 0 && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-slate-700 rounded-2xl shadow-2xl backdrop-blur px-4 py-3 flex items-center gap-3 min-w-[340px] max-w-[90%]">
-              <Button size="icon" variant="ghost" onClick={() => { setPlaying(false); setStepIndex(0) }}>
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-slate-700 rounded-2xl shadow-2xl backdrop-blur px-4 py-3 flex items-center gap-2 min-w-[380px] max-w-[95%]">
+              <Button size="icon" variant="ghost" onClick={() => { setPlaying(false); setStepIndex(0) }} title="Restart">
                 <SkipBack className="w-4 h-4" />
               </Button>
-              <Button size="icon" onClick={() => setPlaying((p) => !p)} className="bg-purple-600 hover:bg-purple-500">
+              <Button size="icon" onClick={() => setPlaying((p) => !p)} className="bg-purple-600 hover:bg-purple-500" title="Play/Pause (Space)">
                 {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
               </Button>
-              <Button size="icon" variant="ghost" onClick={() => setStepIndex((i) => Math.min(i + 1, diagram.steps.length - 1))}>
+              <Button size="icon" variant="ghost" onClick={() => setStepIndex((i) => Math.min(i + 1, diagram.steps.length - 1))} title="Next step">
                 <SkipForward className="w-4 h-4" />
               </Button>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs text-slate-400 flex items-center justify-between">
-                  <span>{t('step')} {stepIndex + 1} / {diagram.steps.length}</span>
-                </div>
+              <div className="flex-1 min-w-0 px-1">
+                <div className="text-xs text-slate-400">{t('step')} {stepIndex + 1} / {diagram.steps.length}</div>
                 <div className="text-sm font-medium truncate">{currentStep?.title}</div>
               </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline" className="border-slate-700 h-8 px-2 gap-1" title="Playback speed">
+                    <Gauge className="w-3.5 h-3.5" /> {speed}x
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="bg-slate-900 border-slate-700 min-w-[80px]">
+                  {[0.5, 1, 1.5, 2].map((s) => (
+                    <DropdownMenuItem key={s} onClick={() => setSpeed(s)} className="cursor-pointer focus:bg-slate-800 justify-center">{s}x</DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button size="icon" variant="ghost" onClick={exportPNG} title="Export PNG">
+                <Download className="w-4 h-4" />
+              </Button>
             </div>
           )}
 
