@@ -19,7 +19,8 @@ import {
   History, RotateCw, Languages, Library, Trash2, Download, Gauge,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { toPng } from 'html-to-image'
+import { toPng, toSvg } from 'html-to-image'
+import jsPDF from 'jspdf'
 import { GeometryCanvas } from '@/components/GeometryCanvas'
 import {
   DropdownMenu,
@@ -138,16 +139,35 @@ export default function App() {
     return () => clearTimeout(tt)
   }, [playing, stepIndex, diagram, speed])
 
-  async function exportPNG() {
+  async function exportAs(format) {
     const target = canvasWrapRef.current
     if (!target) return
+    const filename = (diagram?.title || 'diagram').replace(/[^a-z0-9]+/gi, '_').toLowerCase()
     try {
-      const dataUrl = await toPng(target, { backgroundColor: '#020617', pixelRatio: 2, cacheBust: true })
-      const a = document.createElement('a')
-      a.download = `${(diagram?.title || 'diagram').replace(/\s+/g, '_').toLowerCase()}.png`
-      a.href = dataUrl
-      a.click()
-      toast.success('📥 PNG downloaded')
+      if (format === 'png') {
+        const dataUrl = await toPng(target, { backgroundColor: '#020617', pixelRatio: 2, cacheBust: true })
+        const a = document.createElement('a')
+        a.download = `${filename}.png`
+        a.href = dataUrl
+        a.click()
+      } else if (format === 'svg') {
+        const dataUrl = await toSvg(target, { backgroundColor: '#020617', cacheBust: true })
+        const a = document.createElement('a')
+        a.download = `${filename}.svg`
+        a.href = dataUrl
+        a.click()
+      } else if (format === 'pdf') {
+        const dataUrl = await toPng(target, { backgroundColor: '#020617', pixelRatio: 2, cacheBust: true })
+        const img = new Image()
+        img.src = dataUrl
+        await new Promise((res) => { img.onload = res })
+        const w = img.width
+        const h = img.height
+        const pdf = new jsPDF({ orientation: w > h ? 'landscape' : 'portrait', unit: 'pt', format: [w, h] })
+        pdf.addImage(dataUrl, 'PNG', 0, 0, w, h)
+        pdf.save(`${filename}.pdf`)
+      }
+      toast.success(`📥 ${format.toUpperCase()} downloaded`)
     } catch (e) {
       toast.error('Export failed: ' + e.message)
     }
@@ -520,9 +540,18 @@ export default function App() {
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button size="icon" variant="ghost" onClick={exportPNG} title="Export PNG">
-                <Download className="w-4 h-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="icon" variant="ghost" title="Export diagram">
+                    <Download className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="bg-slate-900 border-slate-700 min-w-[120px]">
+                  <DropdownMenuItem onClick={() => exportAs('png')} className="cursor-pointer focus:bg-slate-800">PNG</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportAs('svg')} className="cursor-pointer focus:bg-slate-800">SVG</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportAs('pdf')} className="cursor-pointer focus:bg-slate-800">PDF</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           )}
 
@@ -600,6 +629,19 @@ export default function App() {
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {diagram.quiz?.length > 0 && (
+                <div className="pt-4 border-t border-slate-800">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3 flex items-center gap-1">
+                    <BookOpen className="w-3 h-3" /> Quiz
+                  </h4>
+                  <div className="space-y-3">
+                    {diagram.quiz.map((q, i) => (
+                      <QuizCard key={q.id || i} q={q} idx={i + 1} />
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -811,4 +853,41 @@ function renderBold(text) {
     if (p.startsWith('`') && p.endsWith('`')) return <code key={i} className="px-1 py-0.5 bg-slate-950 rounded text-xs">{p.slice(1, -1)}</code>
     return <span key={i}>{p}</span>
   })
+}
+
+function QuizCard({ q, idx }) {
+  const [picked, setPicked] = useState(null)
+  const isCorrect = picked !== null && picked === q.correctIndex
+  return (
+    <div className="bg-slate-950/60 border border-slate-800 rounded-lg p-3">
+      <div className="text-sm font-medium text-slate-100 mb-2">Q{idx}. {q.question}</div>
+      <div className="space-y-1.5">
+        {(q.options || []).map((opt, i) => {
+          const chosen = picked === i
+          const right = i === q.correctIndex
+          let cls = 'border-slate-700 hover:border-slate-600 text-slate-300'
+          if (picked !== null) {
+            if (right) cls = 'border-emerald-500/60 bg-emerald-500/10 text-emerald-200'
+            else if (chosen) cls = 'border-red-500/60 bg-red-500/10 text-red-200'
+            else cls = 'border-slate-800 text-slate-500'
+          }
+          return (
+            <button
+              key={i}
+              disabled={picked !== null}
+              onClick={() => setPicked(i)}
+              className={`w-full text-left text-xs px-3 py-2 rounded border transition disabled:cursor-default ${cls}`}
+            >
+              {String.fromCharCode(65 + i)}. {opt}
+            </button>
+          )
+        })}
+      </div>
+      {picked !== null && (
+        <div className={`mt-2 text-xs ${isCorrect ? 'text-emerald-300' : 'text-amber-300'}`}>
+          {isCorrect ? '✓ Correct! ' : '✗ Not quite. '}{q.explanation}
+        </div>
+      )}
+    </div>
+  )
 }
