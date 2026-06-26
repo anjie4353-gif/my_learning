@@ -69,7 +69,7 @@ async function handleRoute(request, { params }) {
       const raw = await callLLM({
         system: DIAGRAM_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: `Concept: ${prompt}\n\nReturn ONLY the JSON object as specified.` }],
-        model: 'gpt-5-mini',
+        model: 'gemini-2.5-flash',
         json: true,
         temperature: 0.6,
       })
@@ -141,7 +141,7 @@ async function handleRoute(request, { params }) {
       const reply = await callLLM({
         system: TUTOR_SYSTEM_PROMPT + conceptContext,
         messages,
-        model: 'gpt-5-mini',
+        model: 'gemini-2.5-flash',
         temperature: 0.5,
       })
 

@@ -197,7 +197,7 @@ export default function App() {
               <span className="font-bold text-lg">Visual Engineering AI</span>
             </div>
             <Badge variant="outline" className="border-purple-500/40 text-purple-300">
-              <Sparkles className="w-3 h-3 mr-1" /> Powered by GPT-5
+              <Sparkles className="w-3 h-3 mr-1" /> Powered by Gemini 2.5
             </Badge>
           </nav>
 
