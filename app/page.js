@@ -15,7 +15,7 @@ import 'katex/dist/katex.min.css'
 import { BlockMath, InlineMath } from 'react-katex'
 import {
   Sparkles, Send, Play, Pause, SkipBack, SkipForward, X, Loader2,
-  Brain, MessageCircle, Zap, Code2, BookOpen, Lightbulb, ChevronRight, Cpu,
+  Brain, MessageCircle, Zap, Code2, BookOpen, Lightbulb, ChevronRight, Cpu, Globe,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,17 +23,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card } from '@/components/ui/card'
-
-const EXAMPLES = [
-  'Explain Neural Networks',
-  'How does Dijkstra\'s algorithm work',
-  'Kubernetes architecture',
-  'Transformer attention mechanism',
-  'TCP three-way handshake',
-  'Merge Sort step by step',
-  'CAP theorem in distributed systems',
-  'How OAuth 2.0 works',
-]
+import { LanguageSelector } from '@/components/LanguageSelector'
+import { useLang } from '@/app/providers'
+import { EXAMPLE_PROMPTS, langByCode } from '@/lib/i18n'
 
 const TYPE_COLORS = {
   input: { bg: '#1e3a8a', border: '#3b82f6', text: '#dbeafe' },
@@ -94,6 +86,7 @@ function buildFlow(diagram, highlightNodeIds = [], highlightEdgeIds = []) {
 }
 
 export default function App() {
+  const { t, lang, setLang, detectedSuggestion, dismissSuggestion } = useLang()
   const [prompt, setPrompt] = useState('')
   const [loading, setLoading] = useState(false)
   const [diagram, setDiagram] = useState(null)
@@ -117,16 +110,15 @@ export default function App() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   useEffect(() => { setNodes(flow.nodes); setEdges(flow.edges) }, [flow, setNodes, setEdges])
 
-  // step auto-play
   useEffect(() => {
     if (!playing || !diagram?.steps?.length) return
-    const t = setTimeout(() => {
+    const tt = setTimeout(() => {
       setStepIndex((i) => {
         if (i + 1 >= diagram.steps.length) { setPlaying(false); return i }
         return i + 1
       })
     }, 2200)
-    return () => clearTimeout(t)
+    return () => clearTimeout(tt)
   }, [playing, stepIndex, diagram])
 
   async function generate(text) {
@@ -137,7 +129,7 @@ export default function App() {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: p }),
+        body: JSON.stringify({ prompt: p, lang }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to generate')
@@ -150,8 +142,8 @@ export default function App() {
     }
   }
 
-  async function sendChat() {
-    const msg = chatInput.trim()
+  async function sendChat(messageOverride) {
+    const msg = (messageOverride ?? chatInput).trim()
     if (!msg || chatLoading) return
     const newHistory = [...chat, { role: 'user', content: msg }]
     setChat(newHistory)
@@ -161,7 +153,7 @@ export default function App() {
       const res = await fetch('/api/tutor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, history: chat, concept: diagram }),
+        body: JSON.stringify({ message: msg, history: chat, concept: diagram, lang }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'tutor failed')
@@ -188,31 +180,49 @@ export default function App() {
           <div className="absolute bottom-0 left-1/3 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
         </div>
 
-        <div className="relative max-w-6xl mx-auto px-6 pt-16 pb-24">
-          <nav className="flex items-center justify-between mb-20">
+        <div className="relative max-w-6xl mx-auto px-6 pt-10 pb-24">
+          <nav className="flex items-center justify-between mb-16">
             <div className="flex items-center gap-2">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
                 <Brain className="w-5 h-5" />
               </div>
-              <span className="font-bold text-lg">Visual Engineering AI</span>
+              <span className="font-bold text-lg">{t('app_name')}</span>
             </div>
-            <Badge variant="outline" className="border-purple-500/40 text-purple-300">
-              <Sparkles className="w-3 h-3 mr-1" /> Powered by Gemini 2.5
-            </Badge>
+            <div className="flex items-center gap-3">
+              <Badge variant="outline" className="border-purple-500/40 text-purple-300 hidden sm:inline-flex">
+                <Sparkles className="w-3 h-3 mr-1" /> {t('powered_by')}
+              </Badge>
+              <LanguageSelector />
+            </div>
           </nav>
+
+          {detectedSuggestion && (
+            <div className="mb-8 mx-auto max-w-2xl bg-gradient-to-r from-purple-900/40 to-blue-900/40 border border-purple-500/30 rounded-xl px-4 py-3 flex items-center gap-3 backdrop-blur">
+              <Globe className="w-5 h-5 text-purple-300 shrink-0" />
+              <div className="flex-1 text-sm">
+                {t('switch_lang')} <span className="font-semibold">{langByCode(detectedSuggestion).native}</span>?
+              </div>
+              <Button size="sm" onClick={() => setLang(detectedSuggestion)} className="bg-purple-600 hover:bg-purple-500 h-8">
+                {t('switch_yes')}
+              </Button>
+              <button onClick={dismissSuggestion} className="text-slate-400 hover:text-slate-100 p-1">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
           <div className="text-center mb-12">
             <Badge className="mb-6 bg-purple-500/10 text-purple-300 border-purple-500/30">
-              Interactive Visual Learning
+              {t('badge_interactive')}
             </Badge>
-            <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
-              Understand any technical<br />
+            <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold mb-6 leading-tight">
+              {t('hero_1')}<br />
               <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
-                concept visually
+                {t('hero_2')}
               </span>
             </h1>
-            <p className="text-xl text-slate-400 max-w-2xl mx-auto mb-10">
-              Type any engineering, AI, algorithm, or system design concept. Get an instant interactive diagram, animated walkthrough, formulas, and a personal AI tutor.
+            <p className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto mb-10">
+              {t('hero_subtitle')}
             </p>
 
             <div className="max-w-2xl mx-auto">
@@ -221,7 +231,7 @@ export default function App() {
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && generate()}
-                  placeholder="e.g. Explain how Transformers work..."
+                  placeholder={t('input_placeholder')}
                   className="flex-1 bg-transparent border-0 text-base focus-visible:ring-0 placeholder:text-slate-500"
                 />
                 <Button
@@ -229,14 +239,14 @@ export default function App() {
                   disabled={loading || !prompt.trim()}
                   className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 px-6"
                 >
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Sparkles className="w-4 h-4 mr-2" />Visualize</>}
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Sparkles className="w-4 h-4 mr-2" />{t('visualize')}</>}
                 </Button>
               </div>
               {error && <p className="mt-3 text-red-400 text-sm">{error}</p>}
             </div>
 
             <div className="mt-8 flex flex-wrap justify-center gap-2 max-w-3xl mx-auto">
-              {EXAMPLES.map((ex) => (
+              {EXAMPLE_PROMPTS.map((ex) => (
                 <button
                   key={ex}
                   disabled={loading}
@@ -251,9 +261,9 @@ export default function App() {
 
           <div className="grid md:grid-cols-3 gap-4 mt-20">
             {[
-              { icon: Zap, title: 'Interactive Diagrams', desc: 'AI generates clickable nodes and animated flows in seconds.' },
-              { icon: Play, title: 'Step-by-Step Animation', desc: 'Walk through every concept like a movie. Pause, rewind, replay.' },
-              { icon: MessageCircle, title: 'Personal AI Tutor', desc: 'Ask follow-up questions about any diagram. Context-aware.' },
+              { icon: Zap, title: t('feat_1_t'), desc: t('feat_1_d') },
+              { icon: Play, title: t('feat_2_t'), desc: t('feat_2_d') },
+              { icon: MessageCircle, title: t('feat_3_t'), desc: t('feat_3_d') },
             ].map((f) => (
               <Card key={f.title} className="p-6 bg-slate-900/60 border-slate-800 backdrop-blur">
                 <f.icon className="w-7 h-7 text-purple-400 mb-3" />
@@ -271,8 +281,8 @@ export default function App() {
                 <div className="absolute inset-0 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 animate-pulse" />
                 <Brain className="absolute inset-0 m-auto w-10 h-10" />
               </div>
-              <p className="text-lg font-medium">Visualizing your concept...</p>
-              <p className="text-sm text-slate-400 mt-1">GPT-5 is decomposing the topic</p>
+              <p className="text-lg font-medium">{t('loading_title')}</p>
+              <p className="text-sm text-slate-400 mt-1">{t('loading_sub')}</p>
             </div>
           </div>
         )}
@@ -283,7 +293,6 @@ export default function App() {
   // ---------- WORKSPACE ----------
   return (
     <div className="h-screen flex flex-col bg-slate-950 text-slate-100">
-      {/* Top bar */}
       <header className="flex items-center gap-3 px-4 py-3 border-b border-slate-800 bg-slate-900/60 backdrop-blur z-10">
         <button
           onClick={() => { setDiagram(null); setPrompt(''); setError('') }}
@@ -292,35 +301,33 @@ export default function App() {
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
             <Brain className="w-4 h-4" />
           </div>
-          <span className="font-bold hidden sm:inline">Visual Engineering AI</span>
+          <span className="font-bold hidden sm:inline">{t('app_name')}</span>
         </button>
         <div className="flex-1 mx-4 flex items-center gap-2 max-w-2xl">
           <Input
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && generate()}
-            placeholder="Try another concept..."
+            placeholder={t('try_another')}
             className="bg-slate-800 border-slate-700"
           />
           <Button onClick={() => generate()} disabled={loading} size="sm" className="bg-purple-600 hover:bg-purple-500">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
           </Button>
         </div>
+        <LanguageSelector compact />
         <Button variant="outline" size="sm" onClick={() => setTutorOpen((o) => !o)} className="border-slate-700">
-          <MessageCircle className="w-4 h-4 mr-2" />AI Tutor
+          <MessageCircle className="w-4 h-4 mr-2" />{t('ai_tutor')}
         </Button>
       </header>
 
-      {/* Title strip */}
       <div className="px-6 py-3 border-b border-slate-800 bg-slate-900/40 flex items-center gap-3">
         <Badge className="bg-purple-500/15 text-purple-300 border-purple-500/30">{diagram.category}</Badge>
         <h2 className="text-lg font-semibold">{diagram.title}</h2>
         <p className="text-sm text-slate-400 hidden md:block truncate">{diagram.summary}</p>
       </div>
 
-      {/* Main split */}
       <div className="flex-1 flex min-h-0">
-        {/* Canvas */}
         <div className="flex-1 relative">
           <ReactFlow
             nodes={nodes}
@@ -337,7 +344,6 @@ export default function App() {
             <MiniMap className="!bg-slate-900 !border-slate-700" nodeColor={(n) => n.style?.border || '#64748b'} maskColor="rgba(0,0,0,0.6)" />
           </ReactFlow>
 
-          {/* Step controller */}
           {diagram.steps?.length > 0 && (
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-slate-700 rounded-2xl shadow-2xl backdrop-blur px-4 py-3 flex items-center gap-3 min-w-[340px] max-w-[90%]">
               <Button size="icon" variant="ghost" onClick={() => { setPlaying(false); setStepIndex(0) }}>
@@ -351,14 +357,13 @@ export default function App() {
               </Button>
               <div className="flex-1 min-w-0">
                 <div className="text-xs text-slate-400 flex items-center justify-between">
-                  <span>Step {stepIndex + 1} / {diagram.steps.length}</span>
+                  <span>{t('step')} {stepIndex + 1} / {diagram.steps.length}</span>
                 </div>
                 <div className="text-sm font-medium truncate">{currentStep?.title}</div>
               </div>
             </div>
           )}
 
-          {/* Step narration */}
           {currentStep && (
             <div className="absolute top-4 left-4 right-4 md:right-auto max-w-md bg-slate-900/95 border border-slate-700 rounded-xl p-4 backdrop-blur shadow-xl">
               <div className="flex items-center gap-2 mb-2">
@@ -370,7 +375,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Right side panel: node detail / insights */}
         <aside className="w-[360px] hidden lg:flex flex-col border-l border-slate-800 bg-slate-900/40">
           <ScrollArea className="flex-1">
             <div className="p-5 space-y-5">
@@ -388,13 +392,13 @@ export default function App() {
                   <p className="text-sm text-slate-300 leading-relaxed">{selectedNode.description}</p>
                   {selectedNode.code && (
                     <div>
-                      <div className="flex items-center gap-1 text-xs text-slate-400 mb-1"><Code2 className="w-3 h-3" />Code</div>
+                      <div className="flex items-center gap-1 text-xs text-slate-400 mb-1"><Code2 className="w-3 h-3" />{t('code')}</div>
                       <pre className="text-xs bg-slate-950 border border-slate-800 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap text-slate-300">{selectedNode.code}</pre>
                     </div>
                   )}
                   {selectedNode.example && (
                     <div>
-                      <div className="flex items-center gap-1 text-xs text-slate-400 mb-1"><Lightbulb className="w-3 h-3" />Real-world example</div>
+                      <div className="flex items-center gap-1 text-xs text-slate-400 mb-1"><Lightbulb className="w-3 h-3" />{t('real_world_example')}</div>
                       <p className="text-sm text-slate-300">{selectedNode.example}</p>
                     </div>
                   )}
@@ -402,13 +406,13 @@ export default function App() {
               ) : (
                 <div className="text-center text-slate-500 text-sm py-4">
                   <Cpu className="w-6 h-6 mx-auto mb-2 opacity-50" />
-                  Click any node to explore details
+                  {t('click_node_hint')}
                 </div>
               )}
 
               {diagram.formulas?.length > 0 && (
                 <div className="pt-4 border-t border-slate-800">
-                  <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3 flex items-center gap-1"><BookOpen className="w-3 h-3" />Formulas</h4>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3 flex items-center gap-1"><BookOpen className="w-3 h-3" />{t('formulas')}</h4>
                   <div className="space-y-3">
                     {diagram.formulas.map((f, i) => (
                       <div key={i} className="bg-slate-950/60 border border-slate-800 rounded-lg p-3">
@@ -425,7 +429,7 @@ export default function App() {
 
               {diagram.insights?.length > 0 && (
                 <div className="pt-4 border-t border-slate-800">
-                  <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2 flex items-center gap-1"><Lightbulb className="w-3 h-3" />Key Insights</h4>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2 flex items-center gap-1"><Lightbulb className="w-3 h-3" />{t('insights')}</h4>
                   <ul className="space-y-2">
                     {diagram.insights.map((ins, i) => (
                       <li key={i} className="text-sm text-slate-300 flex gap-2">
@@ -441,7 +445,6 @@ export default function App() {
         </aside>
       </div>
 
-      {/* Tutor drawer */}
       {tutorOpen && (
         <div className="fixed bottom-0 right-0 top-0 w-full sm:w-[420px] bg-slate-900 border-l border-slate-800 z-40 flex flex-col shadow-2xl">
           <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
@@ -450,8 +453,8 @@ export default function App() {
                 <MessageCircle className="w-4 h-4" />
               </div>
               <div>
-                <div className="font-semibold text-sm">AI Tutor</div>
-                <div className="text-xs text-slate-400">Context: {diagram.title}</div>
+                <div className="font-semibold text-sm">{t('ai_tutor')}</div>
+                <div className="text-xs text-slate-400">{t('context')}: {diagram.title}</div>
               </div>
             </div>
             <button onClick={() => setTutorOpen(false)} className="text-slate-400 hover:text-slate-100"><X className="w-4 h-4" /></button>
@@ -460,10 +463,10 @@ export default function App() {
             <div className="p-4 space-y-4">
               {chat.length === 0 && (
                 <div className="text-sm text-slate-400 space-y-2">
-                  <p>Ask anything about <span className="text-slate-200 font-medium">{diagram.title}</span>:</p>
+                  <p>{t('ask_about')} <span className="text-slate-200 font-medium">{diagram.title}</span>:</p>
                   <div className="space-y-1.5">
-                    {['Why is this important?', 'Give me an interview question on this', 'Show me a Python example', 'What are common mistakes?'].map(q => (
-                      <button key={q} onClick={() => { setChatInput(q); setTimeout(sendChat, 0) }} className="block w-full text-left text-xs px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700">{q}</button>
+                    {[t('suggest_1'), t('suggest_2'), t('suggest_3'), t('suggest_4')].map(q => (
+                      <button key={q} onClick={() => sendChat(q)} className="block w-full text-left text-xs px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700">{q}</button>
                     ))}
                   </div>
                 </div>
@@ -477,7 +480,7 @@ export default function App() {
               ))}
               {chatLoading && (
                 <div className="flex items-center gap-2 text-slate-400 text-sm">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Thinking...
+                  <Loader2 className="w-4 h-4 animate-spin" /> {t('thinking')}
                 </div>
               )}
             </div>
@@ -487,10 +490,10 @@ export default function App() {
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
-              placeholder="Ask anything about this diagram..."
+              placeholder={t('ask_diagram_placeholder')}
               className="min-h-[44px] max-h-32 resize-none bg-slate-800 border-slate-700"
             />
-            <Button onClick={sendChat} disabled={chatLoading || !chatInput.trim()} className="bg-purple-600 hover:bg-purple-500 self-end">
+            <Button onClick={() => sendChat()} disabled={chatLoading || !chatInput.trim()} className="bg-purple-600 hover:bg-purple-500 self-end">
               <Send className="w-4 h-4" />
             </Button>
           </div>
@@ -500,9 +503,7 @@ export default function App() {
   )
 }
 
-// Lightweight markdown-ish renderer for tutor messages with LaTeX support
 function ChatMessage({ content }) {
-  // Split by code blocks first
   const parts = []
   const codeRegex = /```(\w+)?\n?([\s\S]*?)```/g
   let last = 0
@@ -527,7 +528,6 @@ function ChatMessage({ content }) {
 }
 
 function TextWithMath({ text }) {
-  // Handle $$...$$ block math and $...$ inline
   const blockRegex = /\$\$([\s\S]+?)\$\$/g
   const segments = []
   let last = 0
