@@ -301,6 +301,10 @@ function ProductDetailDialog({ product, open, onClose, onOrder, onShare, onSwitc
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-5xl p-0 overflow-hidden max-h-[92vh] flex flex-col">
+        <DialogHeader className="sr-only">
+          <DialogTitle>{product.name}</DialogTitle>
+          <DialogDescription>{product.description}</DialogDescription>
+        </DialogHeader>
         <div className="overflow-y-auto flex-1">
           {/* MAIN PRODUCT */}
           <div className="grid md:grid-cols-2">
