@@ -8,6 +8,9 @@ const nextConfig = {
   },
   // Renamed from experimental.serverComponentsExternalPackages in Next 15
   serverExternalPackages: ['mongodb'],
+  experimental: {
+    serverActions: { bodySizeLimit: '6mb' },
+  },
   webpack(config, { dev }) {
     if (dev) {
       // Reduce CPU/memory from file watching

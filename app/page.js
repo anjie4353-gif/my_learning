@@ -24,6 +24,37 @@ const STORE = process.env.NEXT_PUBLIC_STORE_NAME || 'UN Mart'
 const TAGLINE = process.env.NEXT_PUBLIC_STORE_TAGLINE || 'Handmade art with a touch of heart'
 const CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL || 'anjieu4353@gmail.com'
 
+// Client-side image compression for upload (resize + JPEG re-encode)
+async function compressImage(file, maxDim = 1200, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type?.startsWith('image/')) {
+      reject(new Error('Please select an image file')); return
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      reject(new Error('File too large (max 25 MB before compression)')); return
+    }
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        let { width, height } = img
+        if (width > height && width > maxDim) { height = Math.round((height * maxDim) / width); width = maxDim }
+        else if (height > maxDim) { width = Math.round((width * maxDim) / height); height = maxDim }
+        const canvas = document.createElement('canvas')
+        canvas.width = width; canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height)
+        ctx.drawImage(img, 0, 0, width, height)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+      img.onerror = () => reject(new Error('Could not load image'))
+      img.src = e.target.result
+    }
+    reader.onerror = () => reject(new Error('Could not read file'))
+    reader.readAsDataURL(file)
+  })
+}
+
 const apiFetch = async (path, opts = {}) => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) }
@@ -542,29 +573,88 @@ function ContactSection() {
   )
 }
 
-// ---------------- Share Dialog ----------------
+// ---------------- Share Dialog (Power Link) ----------------
 function ShareDialog({ product, open, onClose }) {
+  const [hasNativeShare, setHasNativeShare] = useState(false)
+  useEffect(() => {
+    setHasNativeShare(typeof navigator !== 'undefined' && typeof navigator.share === 'function')
+  }, [])
   if (!product) return null
   const url = productUrl(product.slug)
+  const text = `✨ Check out *${product.name}* at ${STORE} — ${TAGLINE}\n${fmtPrice(effectivePrice(product))}\n${url}`
   const copy = async () => {
-    try { await navigator.clipboard.writeText(url); toast.success('Link copied!') }
+    try { await navigator.clipboard.writeText(url); toast.success('Link copied! Paste it anywhere.') }
     catch { toast.error('Could not copy.') }
   }
-  const shareWA = `https://web.whatsapp.com/send?text=${encodeURIComponent(`Check out *${product.name}* at ${STORE}: ${url}`)}`
+  const copyFull = async () => {
+    try { await navigator.clipboard.writeText(text); toast.success('Message copied!') }
+    catch { toast.error('Could not copy.') }
+  }
+  const nativeShare = async () => {
+    try {
+      await navigator.share({ title: `${product.name} — ${STORE}`, text, url })
+    } catch (e) {
+      if (e?.name !== 'AbortError') toast.error('Share cancelled or failed')
+    }
+  }
+  const shareWA = `https://web.whatsapp.com/send?text=${encodeURIComponent(text)}`
+  const shareTG = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(`Check out ${product.name} at ${STORE}`)}`
+  const shareFB = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`
+  const shareTW = `https://twitter.com/intent/tweet?text=${encodeURIComponent(`Check out ${product.name} at ${STORE}`)}&url=${encodeURIComponent(url)}`
+  const shareEmail = `mailto:?subject=${encodeURIComponent(`${product.name} at ${STORE}`)}&body=${encodeURIComponent(text)}`
+  const shareSMS = `sms:?body=${encodeURIComponent(text)}`
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Share this product</DialogTitle>
-          <DialogDescription>Anyone with this link can view the product.</DialogDescription>
+          <DialogTitle className="flex items-center gap-2"><Share2 className="h-5 w-5 text-rose-600" /> Share this product</DialogTitle>
+          <DialogDescription>Share the unique product link anywhere — WhatsApp, Instagram, Messages, Email, and more.</DialogDescription>
         </DialogHeader>
-        <div className="rounded-md bg-slate-50 p-3 text-xs break-all border font-mono">{url}</div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={copy} className="flex-1">Copy Link</Button>
-          <a href={shareWA} target="_blank" rel="noopener noreferrer" className="flex-1">
-            <Button className="w-full bg-emerald-600 hover:bg-emerald-700"><MessageCircle className="h-4 w-4 mr-1" /> Share via WhatsApp</Button>
+        <div className="flex gap-3 p-3 bg-rose-50 rounded-lg border border-rose-100">
+          <img src={product.imageUrl} alt="" className="h-14 w-14 rounded-md object-cover" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm line-clamp-1">{product.name}</div>
+            <div className="text-lg font-bold text-rose-700">{fmtPrice(effectivePrice(product))}</div>
+          </div>
+        </div>
+
+        <div className="rounded-md bg-slate-50 p-2 text-[11px] break-all border font-mono text-slate-700">{url}</div>
+
+        {hasNativeShare && (
+          <Button onClick={nativeShare} size="lg" className="w-full bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white">
+            <Share2 className="h-4 w-4 mr-2" /> Share via Phone (all apps)
+          </Button>
+        )}
+
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="outline" onClick={copy}>📋 Copy Link</Button>
+          <Button variant="outline" onClick={copyFull}>📝 Copy Message</Button>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 pt-1">
+          <a href={shareWA} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center p-2 rounded-md border hover:bg-emerald-50 hover:border-emerald-300 transition">
+            <span className="text-2xl">💬</span><span className="text-[10px] font-medium mt-1">WhatsApp</span>
+          </a>
+          <a href={`https://www.instagram.com/`} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.preventDefault(); copyFull(); toast.info('Message copied — paste in Instagram story/DM'); window.open('https://www.instagram.com/', '_blank') }} className="flex flex-col items-center p-2 rounded-md border hover:bg-pink-50 hover:border-pink-300 transition">
+            <span className="text-2xl">📸</span><span className="text-[10px] font-medium mt-1">Instagram</span>
+          </a>
+          <a href={shareSMS} className="flex flex-col items-center p-2 rounded-md border hover:bg-blue-50 hover:border-blue-300 transition">
+            <span className="text-2xl">💬</span><span className="text-[10px] font-medium mt-1">SMS</span>
+          </a>
+          <a href={shareTG} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center p-2 rounded-md border hover:bg-sky-50 hover:border-sky-300 transition">
+            <span className="text-2xl">✈️</span><span className="text-[10px] font-medium mt-1">Telegram</span>
+          </a>
+          <a href={shareFB} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center p-2 rounded-md border hover:bg-indigo-50 hover:border-indigo-300 transition">
+            <span className="text-2xl">👍</span><span className="text-[10px] font-medium mt-1">Facebook</span>
+          </a>
+          <a href={shareEmail} className="flex flex-col items-center p-2 rounded-md border hover:bg-amber-50 hover:border-amber-300 transition">
+            <span className="text-2xl">✉️</span><span className="text-[10px] font-medium mt-1">Email</span>
           </a>
         </div>
+        <p className="text-[10px] text-muted-foreground text-center pt-1">
+          📱 On mobile, "Share via Phone" opens your native share sheet showing every installed app.
+        </p>
       </DialogContent>
     </Dialog>
   )
@@ -729,7 +819,23 @@ function StatCard({ icon: Icon, label, value, color }) {
 function ProductForm({ initial, onSaved, onCancel }) {
   const [form, setForm] = useState(initial || { name: '', description: '', actualPrice: '', discountedPrice: '', stock: '', category: '', imageUrl: '' })
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [imgMode, setImgMode] = useState(initial?.imageUrl?.startsWith('data:') ? 'upload' : 'url')
   const [generatedUrl, setGeneratedUrl] = useState(initial?.slug ? productUrl(initial.slug) : '')
+  const fileInputRef = useRef(null)
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const dataUrl = await compressImage(file, 1200, 0.82)
+      setForm(f => ({ ...f, imageUrl: dataUrl }))
+      toast.success('Image ready! Click Save Product to publish.')
+    } catch (err) { toast.error(err.message || 'Could not process image') }
+    finally { setUploading(false); if (e.target) e.target.value = '' }
+  }
+
   const submit = async (e) => {
     e.preventDefault(); setSaving(true)
     try {
@@ -742,12 +848,12 @@ function ProductForm({ initial, onSaved, onCancel }) {
         toast.success('Product created')
       }
       if (saved?.slug) setGeneratedUrl(productUrl(saved.slug))
-      // Brief delay so admin can see the URL before closing
-      setTimeout(() => onSaved(saved), 600)
+      setTimeout(() => onSaved(saved), 800)
     } catch (err) { toast.error(err.message) } finally { setSaving(false) }
   }
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
   const copyUrl = async () => { try { await navigator.clipboard.writeText(generatedUrl); toast.success('URL copied!') } catch {} }
+
   return (
     <form onSubmit={submit} className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
@@ -757,14 +863,44 @@ function ProductForm({ initial, onSaved, onCancel }) {
         <div><Label>Discounted Price ₹</Label><Input type="number" min="0" step="0.01" value={form.discountedPrice} onChange={set('discountedPrice')} placeholder="(optional)" /></div>
         <div><Label>Stock</Label><Input type="number" min="0" value={form.stock} onChange={set('stock')} /></div>
         <div><Label>Category *</Label><Input value={form.category} onChange={set('category')} placeholder="Bangles" maxLength={50} required /></div>
-        <div className="col-span-2">
-          <Label>Image URL <span className="text-muted-foreground text-xs font-normal">(optional — leave blank for placeholder)</span></Label>
-          <Input value={form.imageUrl} onChange={set('imageUrl')} placeholder="https://... (paste any image URL or leave blank)" />
-        </div>
       </div>
-      {form.imageUrl && /^https?:\/\//.test(form.imageUrl) && (
-        <img src={form.imageUrl} alt="" className="h-24 w-24 object-cover rounded border" />
-      )}
+
+      {/* Image — Upload OR URL */}
+      <div className="rounded-lg border p-3 bg-slate-50/50">
+        <Label className="text-sm font-semibold">Product Image <span className="text-muted-foreground text-xs font-normal">(optional — placeholder used if blank)</span></Label>
+        <div className="flex gap-1 mt-2 mb-3 bg-white rounded-md p-1 border w-fit">
+          <button type="button" onClick={() => setImgMode('upload')} className={`px-3 py-1 text-xs rounded ${imgMode === 'upload' ? 'bg-rose-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>📷 Upload from Phone</button>
+          <button type="button" onClick={() => setImgMode('url')} className={`px-3 py-1 text-xs rounded ${imgMode === 'url' ? 'bg-rose-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>🔗 Paste URL</button>
+        </div>
+        {imgMode === 'upload' ? (
+          <div className="space-y-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFile}
+              className="block w-full text-xs file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-rose-600 file:text-white hover:file:bg-rose-700 file:cursor-pointer"
+            />
+            {uploading && <p className="text-xs text-amber-600">⏳ Processing image...</p>}
+            <p className="text-[11px] text-muted-foreground">
+              Tap to choose from gallery or take a photo. Auto-resized & optimized (max ~3 MB).
+            </p>
+          </div>
+        ) : (
+          <Input value={form.imageUrl?.startsWith('data:') ? '' : (form.imageUrl || '')} onChange={set('imageUrl')} placeholder="https://example.com/image.jpg" />
+        )}
+        {form.imageUrl && (
+          <div className="mt-2 flex items-center gap-2">
+            <img src={form.imageUrl} alt="" className="h-20 w-20 object-cover rounded border" />
+            <div className="text-xs text-muted-foreground">
+              {form.imageUrl.startsWith('data:') ? '✅ Uploaded' : '✅ URL set'}
+              <button type="button" onClick={() => setForm(f => ({ ...f, imageUrl: '' }))} className="ml-2 text-red-600 hover:underline">Remove</button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {generatedUrl && (
         <div className="rounded-lg bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-300 p-4 text-xs shadow-sm">
           <div className="font-bold text-emerald-900 mb-2 flex items-center gap-2 text-sm">
@@ -785,9 +921,10 @@ function ProductForm({ initial, onSaved, onCancel }) {
           </div>
         </div>
       )}
+
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button type="submit" disabled={saving} className="bg-rose-600 hover:bg-rose-700">{saving ? 'Saving...' : 'Save Product'}</Button>
+        <Button type="submit" disabled={saving || uploading} className="bg-rose-600 hover:bg-rose-700">{saving ? 'Saving...' : 'Save Product'}</Button>
       </div>
     </form>
   )

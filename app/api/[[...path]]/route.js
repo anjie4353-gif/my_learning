@@ -277,11 +277,17 @@ async function router(request, { params }) {
     if (data.discountedPrice !== null && (!Number.isFinite(data.discountedPrice) || data.discountedPrice < 0 || data.discountedPrice > data.actualPrice))
       return bad('Discounted price must be ≤ actual price')
     if (!data.category) return bad('Category required')
-    // Image URL is OPTIONAL — use placeholder if missing
+    // Image URL is OPTIONAL — accepts http(s) URL OR data:image/... base64 (from file upload)
     if (!data.imageUrl || data.imageUrl.trim() === '') {
       data.imageUrl = `https://placehold.co/600x600/fdf2f8/be185d?text=${encodeURIComponent(data.name.slice(0, 30))}`
+    } else if (data.imageUrl.startsWith('data:image/')) {
+      // Validate base64 data URL & enforce reasonable size limit (~3MB raw -> ~4MB encoded)
+      if (!/^data:image\/(jpeg|jpg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(data.imageUrl))
+        return bad('Invalid image data')
+      if (data.imageUrl.length > 4_500_000)
+        return bad('Image too large (max ~3 MB). Please use a smaller image.')
     } else if (!/^https?:\/\//i.test(data.imageUrl)) {
-      return bad('Image URL must start with http:// or https://')
+      return bad('Image must be a URL or uploaded file')
     }
     const db = await getDb()
     const slug = await ensureSlug(db.collection('products'), slugify(data.name))
