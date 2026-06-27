@@ -582,34 +582,64 @@ function ShareDialog({ product, open, onClose }) {
   if (!product) return null
   const url = productUrl(product.slug)
   const text = `✨ Check out *${product.name}* at ${STORE} — ${TAGLINE}\n${fmtPrice(effectivePrice(product))}\n${url}`
-  const copy = async () => {
-    try { await navigator.clipboard.writeText(url); toast.success('Link copied! Paste it anywhere.') }
-    catch { toast.error('Could not copy.') }
-  }
-  const copyFull = async () => {
-    try { await navigator.clipboard.writeText(text); toast.success('Message copied!') }
-    catch { toast.error('Could not copy.') }
-  }
-  const nativeShare = async () => {
+
+  const copyToClipboard = async (content) => {
     try {
-      await navigator.share({ title: `${product.name} — ${STORE}`, text, url })
-    } catch (e) {
-      if (e?.name !== 'AbortError') toast.error('Share cancelled or failed')
+      await navigator.clipboard.writeText(content)
+      return true
+    } catch {
+      // fallback for older browsers / iframes
+      const ta = document.createElement('textarea')
+      ta.value = content; ta.style.position = 'fixed'; ta.style.opacity = '0'
+      document.body.appendChild(ta); ta.select()
+      try { document.execCommand('copy'); document.body.removeChild(ta); return true }
+      catch { document.body.removeChild(ta); return false }
     }
   }
+
+  const copyLink = async () => {
+    const ok = await copyToClipboard(url)
+    ok ? toast.success('Link copied! Paste it anywhere — WhatsApp, Insta, anywhere.') : toast.error('Could not copy.')
+  }
+  const copyFullMessage = async () => {
+    const ok = await copyToClipboard(text)
+    ok ? toast.success('Full message copied!') : toast.error('Could not copy.')
+  }
+
+  const nativeShare = async () => {
+    try { await navigator.share({ title: `${product.name} — ${STORE}`, text, url }) }
+    catch (e) { if (e?.name !== 'AbortError') toast.error('Share cancelled') }
+  }
+
+  // Auto-copy + open platform — handles iframe blocking gracefully
+  const openWithCopy = async (label, openUrl, copyContent = text) => {
+    await copyToClipboard(copyContent)
+    // Open in new tab; if blocked, user already has link in clipboard
+    try {
+      const w = window.open(openUrl, '_blank', 'noopener,noreferrer')
+      if (!w) {
+        toast.info(`📋 Link copied! Open ${label} manually and paste it.`, { duration: 5000 })
+      } else {
+        toast.success(`📋 Link copied + opening ${label}. If blocked, just paste the link.`, { duration: 4000 })
+      }
+    } catch {
+      toast.info(`📋 Link copied! Open ${label} manually and paste it.`, { duration: 5000 })
+    }
+  }
+
   const shareWA = `https://web.whatsapp.com/send?text=${encodeURIComponent(text)}`
-  const shareTG = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(`Check out ${product.name} at ${STORE}`)}`
+  const shareTG = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent('Check out ' + product.name + ' at ' + STORE)}`
   const shareFB = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`
-  const shareTW = `https://twitter.com/intent/tweet?text=${encodeURIComponent(`Check out ${product.name} at ${STORE}`)}&url=${encodeURIComponent(url)}`
-  const shareEmail = `mailto:?subject=${encodeURIComponent(`${product.name} at ${STORE}`)}&body=${encodeURIComponent(text)}`
+  const shareEmail = `mailto:?subject=${encodeURIComponent(product.name + ' at ' + STORE)}&body=${encodeURIComponent(text)}`
   const shareSMS = `sms:?body=${encodeURIComponent(text)}`
+  const shareInsta = `https://www.instagram.com/`
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Share2 className="h-5 w-5 text-rose-600" /> Share this product</DialogTitle>
-          <DialogDescription>Share the unique product link anywhere — WhatsApp, Instagram, Messages, Email, and more.</DialogDescription>
+          <DialogDescription>Share the unique link anywhere — link auto-copies when you tap a platform.</DialogDescription>
         </DialogHeader>
         <div className="flex gap-3 p-3 bg-rose-50 rounded-lg border border-rose-100">
           <img src={product.imageUrl} alt="" className="h-14 w-14 rounded-md object-cover" />
@@ -619,42 +649,53 @@ function ShareDialog({ product, open, onClose }) {
           </div>
         </div>
 
+        {/* PRIMARY ACTION: Always-works Copy Link */}
+        <Button
+          onClick={copyLink}
+          size="lg"
+          className="w-full bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white"
+        >
+          📋 Copy Link (Works Everywhere)
+        </Button>
+
         <div className="rounded-md bg-slate-50 p-2 text-[11px] break-all border font-mono text-slate-700">{url}</div>
 
         {hasNativeShare && (
-          <Button onClick={nativeShare} size="lg" className="w-full bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white">
-            <Share2 className="h-4 w-4 mr-2" /> Share via Phone (all apps)
+          <Button onClick={nativeShare} variant="outline" className="w-full border-rose-300 text-rose-700 hover:bg-rose-50">
+            <Share2 className="h-4 w-4 mr-2" /> Open Native Share Sheet (Mobile)
           </Button>
         )}
 
-        <div className="grid grid-cols-2 gap-2">
-          <Button variant="outline" onClick={copy}>📋 Copy Link</Button>
-          <Button variant="outline" onClick={copyFull}>📝 Copy Message</Button>
+        <Button onClick={copyFullMessage} variant="outline" className="w-full">📝 Copy Full Message (with name, price & link)</Button>
+
+        <div>
+          <div className="text-xs font-semibold text-slate-700 mb-2 mt-2">Or tap a platform (link auto-copies):</div>
+          <div className="grid grid-cols-3 gap-2">
+            <button onClick={() => openWithCopy('WhatsApp', shareWA)} className="flex flex-col items-center p-3 rounded-md border hover:bg-emerald-50 hover:border-emerald-300 transition">
+              <span className="text-2xl">💬</span><span className="text-[10px] font-medium mt-1">WhatsApp</span>
+            </button>
+            <button onClick={() => openWithCopy('Instagram', shareInsta)} className="flex flex-col items-center p-3 rounded-md border hover:bg-pink-50 hover:border-pink-300 transition">
+              <span className="text-2xl">📸</span><span className="text-[10px] font-medium mt-1">Instagram</span>
+            </button>
+            <button onClick={() => openWithCopy('SMS', shareSMS)} className="flex flex-col items-center p-3 rounded-md border hover:bg-blue-50 hover:border-blue-300 transition">
+              <span className="text-2xl">💬</span><span className="text-[10px] font-medium mt-1">SMS</span>
+            </button>
+            <button onClick={() => openWithCopy('Telegram', shareTG)} className="flex flex-col items-center p-3 rounded-md border hover:bg-sky-50 hover:border-sky-300 transition">
+              <span className="text-2xl">✈️</span><span className="text-[10px] font-medium mt-1">Telegram</span>
+            </button>
+            <button onClick={() => openWithCopy('Facebook', shareFB)} className="flex flex-col items-center p-3 rounded-md border hover:bg-indigo-50 hover:border-indigo-300 transition">
+              <span className="text-2xl">👍</span><span className="text-[10px] font-medium mt-1">Facebook</span>
+            </button>
+            <button onClick={() => openWithCopy('Email', shareEmail)} className="flex flex-col items-center p-3 rounded-md border hover:bg-amber-50 hover:border-amber-300 transition">
+              <span className="text-2xl">✉️</span><span className="text-[10px] font-medium mt-1">Email</span>
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 pt-1">
-          <a href={shareWA} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center p-2 rounded-md border hover:bg-emerald-50 hover:border-emerald-300 transition">
-            <span className="text-2xl">💬</span><span className="text-[10px] font-medium mt-1">WhatsApp</span>
-          </a>
-          <a href={`https://www.instagram.com/`} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.preventDefault(); copyFull(); toast.info('Message copied — paste in Instagram story/DM'); window.open('https://www.instagram.com/', '_blank') }} className="flex flex-col items-center p-2 rounded-md border hover:bg-pink-50 hover:border-pink-300 transition">
-            <span className="text-2xl">📸</span><span className="text-[10px] font-medium mt-1">Instagram</span>
-          </a>
-          <a href={shareSMS} className="flex flex-col items-center p-2 rounded-md border hover:bg-blue-50 hover:border-blue-300 transition">
-            <span className="text-2xl">💬</span><span className="text-[10px] font-medium mt-1">SMS</span>
-          </a>
-          <a href={shareTG} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center p-2 rounded-md border hover:bg-sky-50 hover:border-sky-300 transition">
-            <span className="text-2xl">✈️</span><span className="text-[10px] font-medium mt-1">Telegram</span>
-          </a>
-          <a href={shareFB} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center p-2 rounded-md border hover:bg-indigo-50 hover:border-indigo-300 transition">
-            <span className="text-2xl">👍</span><span className="text-[10px] font-medium mt-1">Facebook</span>
-          </a>
-          <a href={shareEmail} className="flex flex-col items-center p-2 rounded-md border hover:bg-amber-50 hover:border-amber-300 transition">
-            <span className="text-2xl">✉️</span><span className="text-[10px] font-medium mt-1">Email</span>
-          </a>
+        <div className="rounded-md bg-amber-50 border border-amber-200 p-2 text-[11px] text-amber-900">
+          💡 <strong>Preview tip:</strong> If a platform window gets blocked, the link is already in your clipboard —
+          just open WhatsApp/Instagram/etc. manually and paste it. On your real website, all buttons open directly.
         </div>
-        <p className="text-[10px] text-muted-foreground text-center pt-1">
-          📱 On mobile, "Share via Phone" opens your native share sheet showing every installed app.
-        </p>
       </DialogContent>
     </Dialog>
   )
