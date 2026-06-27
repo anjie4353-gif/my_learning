@@ -199,7 +199,13 @@ function ProductCard({ p, onOrder, onView, onShare }) {
   const discount = computeDiscount(p.actualPrice, p.discountedPrice)
   return (
     <Card className="group overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border-rose-100">
-      <button onClick={() => onView(p)} className="block w-full text-left">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onView(p)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onView(p) } }}
+        className="block w-full text-left cursor-pointer"
+      >
         <div className="aspect-square overflow-hidden bg-rose-50/50 relative">
           <img
             src={p.imageUrl}
@@ -213,6 +219,7 @@ function ProductCard({ p, onOrder, onView, onShare }) {
             </div>
           )}
           <button
+            type="button"
             onClick={(e) => { e.stopPropagation(); onShare(p) }}
             title="Share product"
             className="absolute top-2 right-2 h-9 w-9 rounded-full bg-white text-rose-700 flex items-center justify-center shadow-md hover:bg-rose-50 hover:scale-110 transition"
@@ -220,7 +227,7 @@ function ProductCard({ p, onOrder, onView, onShare }) {
             <Share2 className="h-4 w-4" />
           </button>
         </div>
-      </button>
+      </div>
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base line-clamp-2 leading-tight">{p.name}</CardTitle>
@@ -433,7 +440,7 @@ function OrderModal({ product, open, onClose }) {
               </Button>
             </div>
             <div className="rounded-md bg-amber-50 border border-amber-200 p-2 text-[11px] text-amber-900">
-              If WhatsApp doesn't open, copy the message and send manually to <strong>+91 {WA_NUMBER.slice(2)}</strong>.
+              If WhatsApp doesn&apos;t open, copy the message and send manually to <strong>+91 {WA_NUMBER.slice(2)}</strong>.
             </div>
             <Button type="button" variant="ghost" onClick={onClose} className="w-full">Done</Button>
           </div>
@@ -469,9 +476,9 @@ function AboutSection() {
               and precision into every design.
             </p>
             <p>
-              For us, success isn't just measured by the premium quality or the durability of our bangles — it
+              For us, success isn&apos;t just measured by the premium quality or the durability of our bangles — it
               is defined by the moment you wear them. Our ultimate reward is seeing the genuine smile and the
-              radiant, charming glow that lights up your face the moment you adorn a {STORE} creation. We don't
+              radiant, charming glow that lights up your face the moment you adorn a {STORE} creation. We don&apos;t
               just manufacture; we craft <strong>experiences that celebrate you</strong>.
             </p>
             <p className="text-rose-700 italic font-medium">
@@ -506,7 +513,7 @@ function ContactSection() {
       <div className="container">
         <div className="text-center max-w-2xl mx-auto mb-10">
           <Badge className="mb-3 bg-rose-100 text-rose-700 hover:bg-rose-200 border-rose-200">Contact Us</Badge>
-          <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">Let's Connect</h2>
+          <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">Let&apos;s Connect</h2>
           <p className="mt-3 text-slate-600">
             Questions about a piece? Custom orders? Drop us a message — or reach us directly via WhatsApp, phone, or email.
           </p>
@@ -551,7 +558,7 @@ function ContactSection() {
           <Card className="border-rose-100 shadow-md">
             <CardHeader>
               <CardTitle>Send us a message</CardTitle>
-              <CardDescription>We'll reply within 24 hours.</CardDescription>
+              <CardDescription>We&apos;ll reply within 24 hours.</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={submit} className="space-y-3">
@@ -893,7 +900,7 @@ function ProductForm({ initial, onSaved, onCancel }) {
     } catch (err) { toast.error(err.message) } finally { setSaving(false) }
   }
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
-  const copyUrl = async () => { try { await navigator.clipboard.writeText(generatedUrl); toast.success('URL copied!') } catch {} }
+  const copyUrl = async () => { try { await navigator.clipboard.writeText(generatedUrl); toast.success('URL copied!') } catch { /* ignore */ } }
 
   return (
     <form onSubmit={submit} className="space-y-3">
@@ -1003,7 +1010,7 @@ function AdminDashboard({ user }) {
   }
   const toggle = async (id) => { try { await apiFetch(`/products/${id}/toggle`, { method: 'PATCH' }); loadAll() } catch (e) { toast.error(e.message) } }
   const setInqStatus = async (id, status) => { try { await apiFetch(`/inquiries/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }); loadAll() } catch (e) { toast.error(e.message) } }
-  const copyProductUrl = async (slug) => { try { await navigator.clipboard.writeText(productUrl(slug)); toast.success('URL copied!') } catch {} }
+  const copyProductUrl = async (slug) => { try { await navigator.clipboard.writeText(productUrl(slug)); toast.success('URL copied!') } catch { /* ignore */ } }
 
   return (
     <div className="container py-8">
@@ -1222,7 +1229,7 @@ function App() {
   // Restore session
   useEffect(() => {
     const u = typeof window !== 'undefined' ? localStorage.getItem('user') : null
-    if (u) try { setUser(JSON.parse(u)) } catch {}
+    if (u) try { setUser(JSON.parse(u)) } catch { /* ignore */ }
   }, [])
 
   // Handle session invalidation event (another admin logged in elsewhere)
@@ -1256,7 +1263,7 @@ function App() {
   }, [])
 
   const logout = async () => {
-    try { await apiFetch('/auth/logout', { method: 'POST' }) } catch {}
+    try { await apiFetch('/auth/logout', { method: 'POST' }) } catch { /* ignore */ }
     localStorage.removeItem('token'); localStorage.removeItem('refresh'); localStorage.removeItem('user')
     setUser(null); setView('store'); toast.success('Logged out')
   }
