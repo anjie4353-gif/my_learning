@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# Production
+.vercel
+
+# Misc
+.DS_Store
+*.pem
+.idea/
+.vscode/
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment variables — NEVER commit secrets
+.env
+.env*.local
+.env.production
+.env.development
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Test outputs
+/tmp/
+/test_result.md
+
+# OS
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Tarballs
+*.tgz
+.emergent/
+backend_test.py
