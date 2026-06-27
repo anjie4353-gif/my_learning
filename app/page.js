@@ -267,47 +267,135 @@ function ProductCard({ p, onOrder, onView, onShare }) {
 }
 
 // ---------------- Product Detail Dialog ----------------
-function ProductDetailDialog({ product, open, onClose, onOrder, onShare }) {
+function ProductDetailDialog({ product, open, onClose, onOrder, onShare, onSwitchProduct }) {
+  const [related, setRelated] = useState([])
+  const [loadingRelated, setLoadingRelated] = useState(false)
+
+  useEffect(() => {
+    if (!product?.id) return
+    setLoadingRelated(true)
+    apiFetch(`/products?category=${encodeURIComponent(product.category)}&limit=12`)
+      .then((data) => {
+        const filtered = (data.items || []).filter((x) => x.id !== product.id).slice(0, 8)
+        if (filtered.length < 4) {
+          // top up with other products if too few in same category
+          apiFetch(`/products?limit=12`)
+            .then((all) => {
+              const extras = (all.items || [])
+                .filter((x) => x.id !== product.id && !filtered.some((f) => f.id === x.id))
+                .slice(0, 8 - filtered.length)
+              setRelated([...filtered, ...extras])
+              setLoadingRelated(false)
+            })
+            .catch(() => { setRelated(filtered); setLoadingRelated(false) })
+        } else {
+          setRelated(filtered)
+          setLoadingRelated(false)
+        }
+      })
+      .catch(() => { setRelated([]); setLoadingRelated(false) })
+  }, [product?.id, product?.category])
+
   if (!product) return null
   const discount = computeDiscount(product.actualPrice, product.discountedPrice)
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-3xl p-0 overflow-hidden">
-        <div className="grid md:grid-cols-2">
-          <div className="aspect-square md:aspect-auto bg-rose-50">
-            <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
-          </div>
-          <div className="p-6 flex flex-col">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <Badge variant="secondary" className="bg-rose-50 text-rose-700">{product.category}</Badge>
-                <h2 className="text-2xl font-bold mt-2">{product.name}</h2>
-              </div>
-              <Button variant="ghost" size="icon" onClick={onClose}><X className="h-5 w-5" /></Button>
+      <DialogContent className="max-w-5xl p-0 overflow-hidden max-h-[92vh] flex flex-col">
+        <div className="overflow-y-auto flex-1">
+          {/* MAIN PRODUCT */}
+          <div className="grid md:grid-cols-2">
+            <div className="aspect-square md:aspect-auto bg-rose-50 md:max-h-[520px]">
+              <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
             </div>
-            <div className="mt-4 flex items-baseline gap-3 flex-wrap">
-              <span className="text-3xl font-bold text-rose-700">{fmtPrice(effectivePrice(product))}</span>
-              {discount > 0 && (
-                <>
-                  <span className="text-lg text-muted-foreground line-through">{fmtPrice(product.actualPrice)}</span>
-                  <Badge className="bg-rose-600 hover:bg-rose-700">{discount}% OFF</Badge>
-                </>
+            <div className="p-6 flex flex-col">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <Badge variant="secondary" className="bg-rose-50 text-rose-700">{product.category}</Badge>
+                  <h2 className="text-2xl font-bold mt-2">{product.name}</h2>
+                </div>
+                <Button variant="ghost" size="icon" onClick={onClose}><X className="h-5 w-5" /></Button>
+              </div>
+              <div className="mt-4 flex items-baseline gap-3 flex-wrap">
+                <span className="text-3xl font-bold text-rose-700">{fmtPrice(effectivePrice(product))}</span>
+                {discount > 0 && (
+                  <>
+                    <span className="text-lg text-muted-foreground line-through">{fmtPrice(product.actualPrice)}</span>
+                    <Badge className="bg-rose-600 hover:bg-rose-700">{discount}% OFF</Badge>
+                  </>
+                )}
+              </div>
+              <p className="mt-4 text-slate-700 text-sm leading-relaxed">{product.description}</p>
+              <div className="mt-4 text-xs text-slate-600 space-y-1">
+                <div>Availability: {product.stock > 0 ? <span className="text-emerald-700 font-medium">{product.stock} in stock</span> : <span className="text-red-700 font-medium">Out of stock</span>}</div>
+                <div className="font-mono break-all text-[10px]">URL: {productUrl(product.slug)}</div>
+              </div>
+              <div className="mt-auto pt-5 flex gap-2 flex-wrap">
+                <Button onClick={() => onOrder(product)} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
+                  <MessageCircle className="mr-2 h-4 w-4" /> Order on WhatsApp
+                </Button>
+                <Button variant="outline" onClick={() => onShare(product)}>
+                  <Share2 className="h-4 w-4 mr-1" /> Share
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* RELATED PRODUCTS */}
+          {(related.length > 0 || loadingRelated) && (
+            <div className="border-t bg-gradient-to-br from-rose-50/30 to-amber-50/20 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold tracking-tight">You might also like</h3>
+                  <p className="text-xs text-muted-foreground">Similar products from {STORE}</p>
+                </div>
+                <Sparkles className="h-5 w-5 text-rose-500" />
+              </div>
+              {loadingRelated ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="h-56 rounded-lg bg-white/60 animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {related.map((r) => {
+                    const rDisc = computeDiscount(r.actualPrice, r.discountedPrice)
+                    return (
+                      <button
+                        type="button"
+                        key={r.id}
+                        onClick={() => onSwitchProduct?.(r)}
+                        className="group bg-white rounded-lg border hover:shadow-lg hover:border-rose-200 transition-all duration-200 hover:-translate-y-0.5 overflow-hidden text-left"
+                      >
+                        <div className="aspect-square bg-rose-50/50 overflow-hidden relative">
+                          <img
+                            src={r.imageUrl}
+                            alt={r.name}
+                            className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            loading="lazy"
+                          />
+                          {rDisc > 0 && (
+                            <div className="absolute top-1.5 left-1.5 bg-rose-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                              {rDisc}% OFF
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-2.5">
+                          <div className="text-xs font-medium line-clamp-2 leading-tight min-h-[2.2rem]">{r.name}</div>
+                          <div className="mt-1.5 flex items-baseline gap-1.5">
+                            <span className="text-sm font-bold text-rose-700">{fmtPrice(effectivePrice(r))}</span>
+                            {rDisc > 0 && (
+                              <span className="text-[10px] text-muted-foreground line-through">{fmtPrice(r.actualPrice)}</span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
               )}
             </div>
-            <p className="mt-4 text-slate-700 text-sm leading-relaxed">{product.description}</p>
-            <div className="mt-4 text-xs text-slate-600 space-y-1">
-              <div>Availability: {product.stock > 0 ? <span className="text-emerald-700 font-medium">{product.stock} in stock</span> : <span className="text-red-700 font-medium">Out of stock</span>}</div>
-              <div className="font-mono break-all">URL: {productUrl(product.slug)}</div>
-            </div>
-            <div className="mt-auto pt-5 flex gap-2 flex-wrap">
-              <Button onClick={() => onOrder(product)} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
-                <MessageCircle className="mr-2 h-4 w-4" /> Order on WhatsApp
-              </Button>
-              <Button variant="outline" onClick={() => onShare(product)}>
-                <Share2 className="h-4 w-4 mr-1" /> Share
-              </Button>
-            </div>
-          </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -1288,6 +1376,15 @@ function App() {
         onClose={() => setViewProduct(null)}
         onOrder={(p) => { setViewProduct(null); setOrderProduct(p) }}
         onShare={(p) => setShareProduct(p)}
+        onSwitchProduct={(p) => {
+          // Smooth swap: scroll dialog to top and load new product
+          setViewProduct(p)
+          // Update URL without reload
+          if (typeof window !== 'undefined') {
+            const newUrl = `${window.location.pathname}?p=${encodeURIComponent(p.slug)}`
+            window.history.replaceState({}, '', newUrl)
+          }
+        }}
       />
       <OrderModal product={orderProduct} open={!!orderProduct} onClose={() => setOrderProduct(null)} />
       <ShareDialog product={shareProduct} open={!!shareProduct} onClose={() => setShareProduct(null)} />
